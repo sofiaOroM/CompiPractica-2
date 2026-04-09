@@ -38,57 +38,45 @@ export class GeneradorAnalizador {
             });
         }
         // 3. Mapeo de Símbolos y Sintaxis
-const T = data.lex.map(t => t.id); 
-const N = data.syntax.no_terminales; 
-const S = data.syntax.inicial;
+        const T = data.lex.map(t => t.id);
+        const N = data.syntax.no_terminales;
+        const S = data.syntax.inicial;
 
-const P_mapeadas = {};
+        const P_mapeadas = {};
 
-data.syntax.reglas.forEach(regla => {
-    const nt = regla.no_terminal; 
-    
-    // Si es la primera vez que vemos este No Terminal, creamos el array
-    if (!P_mapeadas[nt]) {
-        P_mapeadas[nt] = [];
-    }
+        data.syntax.reglas.forEach(regla => {
+            const nt = regla.no_terminal;
 
-    // Recorremos las opciones y las AGREGAMOS (no sustituimos)
-    regla.opciones.forEach(opcion => {
-        const cuerpoLimpio = opcion.map(simbolo => simbolo.id);
-        P_mapeadas[nt].push(cuerpoLimpio);
-    });
-});
+            // Si es la primera vez que vemos este No Terminal, creamos el array
+            if (!P_mapeadas[nt]) {
+                P_mapeadas[nt] = [];
+            }
 
-console.log("Producciones mapeadas correctamente:", P_mapeadas);
-        /*
-                // 3. Mapeo de Símbolos y Sintaxis
-                const T = data.lex.map(t => t.id);
-                const N = data.syntax.no_terminales;
-                const S = data.syntax.inicial;
+            // Recorremos las opciones y las AGREGAMOS (no sustituimos)
+            regla.opciones.forEach(opcion => {
+                const cuerpoLimpio = opcion.map(simbolo => simbolo.id);
+                P_mapeadas[nt].push(cuerpoLimpio);
+            });
+        });
+
+        console.log("Producciones mapeadas correctamente:", P_mapeadas);
         
-                const P_mapeadas = {};
-                data.syntax.reglas.forEach(regla => {
-                    const nt = regla.no_terminal;
-                    const opciones = regla.opciones.map(opcion => 
-                        opcion.map(simbolo => simbolo.id)
-                    );
-                    P_mapeadas[nt] = opciones;
-                });
-                console.log("Terminales:", T); 
-                console.log("NoTerminales:", N); 
-                console.log("Producciones mapeadas:", P_mapeadas); 
-            
-        */
         // 4. Generación de Tabla LL(1)
         const proc = new ProcesadorGramatica(T, N, P_mapeadas, S);
         const conjuntos = proc.ejecutar();
         const builder = new ConstructorTabla(T, N, P_mapeadas, conjuntos.primeros, conjuntos.siguientes);
         const tabla = builder.generar();
-        console.log("PRIMEROS:", Object.fromEntries(Object.entries(conjuntos.primeros).map(([k, v]) => [k, Array.from(v)])));
-        console.log("SIGUIENTES:", Object.fromEntries(Object.entries(conjuntos.siguientes).map(([k, v]) => [k, Array.from(v)])));
-        console.log("FIRST(%_Sent):", Array.from(conjuntos.primeros['%_Sent'] || [])); console.log("FIRST(%_Lista):", Array.from(conjuntos.primeros['%_Lista'] || []));
+        
+        if (builder.tieneConflictos()) {
+            throw new Error("La gramática no es LL(1): Se detectaron conflictos de desplazamiento en la tabla.");
+        }
 
-        // IMPORTANTE: Retornamos el Evaluador con la configuración léxica expandida
+        // Validar recursividad izquierda (que rompe LL1)
+        if (proc.detectarRecursividadIzquierda()) {
+            throw new Error("Conflicto detectado: La gramática tiene recursividad izquierda.");
+        }
+
+        // Retornar el Evaluador con la configuración léxica expandida
         return new Evaluador(tabla, S, T, lexConfig);
     }
 }

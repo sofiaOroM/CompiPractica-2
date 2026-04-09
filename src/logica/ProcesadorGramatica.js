@@ -17,6 +17,44 @@ export class ProcesadorGramatica {
             this.siguientes[nt] = new Set();
         });
     }
+    
+    detectarRecursividadIzquierda() {
+        const listaNT = this.noTerminales || [];
+        
+        for (let nt of listaNT) {
+            if (this.tieneRecursividad(nt, nt, new Set())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    tieneRecursividad(objetivo, actual, visitados) {
+        // Usamos this.producciones y this.noTerminales para coincidir con tu constructor
+        const reglas = this.producciones ? this.producciones[actual] : [];
+        const listaNT = this.noTerminales || [];
+
+        if (!reglas) return false;
+
+        for (let cuerpo of reglas) {
+            if (!cuerpo || cuerpo.length === 0) continue;
+
+            const primerSimbolo = cuerpo[0];
+
+            // Caso 1: Recursividad Directa
+            if (primerSimbolo === objetivo) return true;
+
+            // Caso 2: Recursividad Indirecta
+            // Verificamos en la lista que definiste en el constructor
+            if (listaNT.includes(primerSimbolo) && !visitados.has(primerSimbolo)) {
+                visitados.add(primerSimbolo);
+                if (this.tieneRecursividad(objetivo, primerSimbolo, visitados)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     ejecutar() {
         this.calcularPrimeros();
@@ -52,7 +90,7 @@ export class ProcesadorGramatica {
 
                             if (this.terminales.includes(simbolo)) {
                                 this.primeros[nt].add(simbolo);
-                                continuarBuscando = false; 
+                                continuarBuscando = false;
                             } else if (this.noTerminales.includes(simbolo)) {
                                 let primsDelHijo = this.primeros[simbolo];
                                 let hijoTieneEpsilon = false;
@@ -79,7 +117,7 @@ export class ProcesadorGramatica {
                 }
             }
             // Seguridad: evitar bucles infinitos en gramáticas mal formadas
-            if (iteracion > 100) break; 
+            if (iteracion > 100) break;
         }
     }
 
@@ -119,7 +157,7 @@ export class ProcesadorGramatica {
                         if (this.noTerminales.includes(B)) {
                             let antes = this.siguientes[B].size;
                             let resto = cuerpo.slice(i + 1);
-                            
+
                             // Caso: A -> α B β
                             let primResto = this.obtenerPrimeroDeCadena(resto);
                             for (let p of primResto) {
@@ -134,7 +172,7 @@ export class ProcesadorGramatica {
                                     this.siguientes[B].add(s);
                                 }
                             }
-                            
+
                             if (this.siguientes[B].size > antes) huboCambio = true;
                         }
                     }

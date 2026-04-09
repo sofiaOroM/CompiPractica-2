@@ -41,7 +41,7 @@ function crearAnalizador() {
         generarTablaHTML(analizadorActual.tabla, [...T, '$'], N);
         // -------------------------------------
 
-        UI.console.innerHTML = "✔ Analizador y Tabla generados con éxito.";
+        UI.console.innerHTML = " Analizador y Tabla generados con éxito.";
         UI.console.className = "alert alert-success error-log";
         UI.btnEvaluar.disabled = false;
 
