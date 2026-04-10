@@ -12,7 +12,7 @@ export class NodoArbol {
     agregarHijo(nodo) {
         this.hijos.push(nodo);
     }
-    
+
     toD3JSON() {
         let out = {
             name: this.lexema ? `${this.valor} ('${this.lexema}')` : this.valor
@@ -31,12 +31,12 @@ export class Evaluador {
         this.terminales = terminales;
         this.lexConfig = lexConfig;
     }
-
+    
     /**
      * @param {Array} tokensEntrada - IDs de los tokens (ej. ["$_NUMERO", "$_Mas"])
-     * @param {Array} valoresReales - Texto original (ej. ["10", "+"])
+     * @param {Array} dataDetallada - Objetos completos del Escáner (ej. [{lexema: "10", linea: 3, columna: 5}, ...])
      */
-    analizar(tokensEntrada, valoresReales) {
+    analizar(tokensEntrada, dataDetallada) {
         let pila = [
             { simbolo: '$', nodo: new NodoArbol('$') },
             { simbolo: this.simboloInicial, nodo: new NodoArbol(this.simboloInicial) }
@@ -48,47 +48,38 @@ export class Evaluador {
         while (pila.length > 0) {
             let cima = pila[pila.length - 1];
             let tokenActual = tokensEntrada[i];
-            let lexemaActual = valoresReales[i]; // Extraemos el texto real del input
 
-            // 1. Coincidencia de Terminales
+            // Extraemos la información del objeto detallado
+            // Agregamos un fallback por si es el token de fin '$'
+            let infoActual = dataDetallada[i] || { lexema: '$', linea: 'fin', columna: 'fin' };
+            let lexemaActual = infoActual.lexema;
+
             if (cima.simbolo === tokenActual) {
-                // GUARDAMOS EL LEXEMA REAL EN EL NODO
                 cima.nodo.lexema = lexemaActual;
-
                 pila.pop();
                 i++;
             }
-            // 2. Errores...
             else if (this.terminales.includes(cima.simbolo) || cima.simbolo === '$') {
-                throw new Error(`Error Sintáctico: Se esperaba '${cima.simbolo}' pero se encontró '${lexemaActual}'`);
+                // ERROR CON LÍNEA Y COLUMNA
+                throw new Error(`Error Sintáctico: Se esperaba '${cima.simbolo}' pero se encontró '${lexemaActual}' en la línea ${infoActual.linea}, columna ${infoActual.columna}`);
             }
-            // 3. Expansión de No Terminales (Reglas)
             else {
                 let produccion = this.tabla[cima.simbolo] ? this.tabla[cima.simbolo][tokenActual] : null;
 
                 if (produccion) {
                     pila.pop();
-                    // SI LA PRODUCCIÓN ES EPSILON
                     if (produccion[0] === 'epsilon' || produccion[0] === 'EPSILON') {
-                        cima.nodo.agregarHijo(new NodoArbol('ε')); // Nodo visual de epsilon
-                        // No agregamos nada a la pila porque no consume tokens
+                        cima.nodo.agregarHijo(new NodoArbol('ε'));
                     } else {
-                        // Creamos los nodos para la regla aplicada
                         let hijosNodos = produccion.map(s => new NodoArbol(s));
-
-                        // IMPORTANTE: En LL(1) los hijos se agregan en el orden de la producción
                         hijosNodos.forEach(hijo => cima.nodo.agregarHijo(hijo));
-
-                        // Pila: Inverso para procesar de izquierda a derecha
                         for (let j = hijosNodos.length - 1; j >= 0; j--) {
-                            pila.push({
-                                simbolo: produccion[j],
-                                nodo: hijosNodos[j]
-                            });
+                            pila.push({ simbolo: produccion[j], nodo: hijosNodos[j] });
                         }
                     }
                 } else {
-                    throw new Error(`Error: No existe regla para [${cima.simbolo}, ${tokenActual}]`);
+                    // ERROR CON LÍNEA Y COLUMNA PARA REGLAS FALTANTES
+                    throw new Error(`Error: No existe regla para [${cima.simbolo}, ${tokenActual}] con el valor '${lexemaActual}' (Línea: ${infoActual.linea}, Col: ${infoActual.columna})`);
                 }
             }
         }

@@ -30,7 +30,7 @@ export class ProcesadorGramatica {
     }
 
     tieneRecursividad(objetivo, actual, visitados) {
-        // Usamos this.producciones y this.noTerminales para coincidir con tu constructor
+        // Usamos this.producciones y this.noTerminales para coincidir con el constructor
         const reglas = this.producciones ? this.producciones[actual] : [];
         const listaNT = this.noTerminales || [];
 

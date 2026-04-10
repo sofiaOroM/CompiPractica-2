@@ -52,7 +52,7 @@ export class GeneradorAnalizador {
                 P_mapeadas[nt] = [];
             }
 
-            // Recorremos las opciones y las AGREGAMOS (no sustituimos)
+            // Recorremos las opciones y las AGREGAMOS
             regla.opciones.forEach(opcion => {
                 const cuerpoLimpio = opcion.map(simbolo => simbolo.id);
                 P_mapeadas[nt].push(cuerpoLimpio);
@@ -63,17 +63,25 @@ export class GeneradorAnalizador {
         
         // 4. Generación de Tabla LL(1)
         const proc = new ProcesadorGramatica(T, N, P_mapeadas, S);
+
+        // --- VALIDACIÓN: RECURSIVIDAD IZQUIERDA ---
+        const simbolosRecursivos = proc.detectarRecursividadIzquierda(); 
+        if (simbolosRecursivos.length > 0) {
+            throw new Error(`Error de Diseño: Se detectó recursividad izquierda en: [${simbolosRecursivos.join(', ')}]. LL(1) no permite que un No Terminal se llame a sí mismo al inicio de su regla.`);
+        }
+
         const conjuntos = proc.ejecutar();
         const builder = new ConstructorTabla(T, N, P_mapeadas, conjuntos.primeros, conjuntos.siguientes);
         const tabla = builder.generar();
         
-        if (builder.tieneConflictos()) {
-            throw new Error("La gramática no es LL(1): Se detectaron conflictos de desplazamiento en la tabla.");
-        }
-
-        // Validar recursividad izquierda (que rompe LL1)
-        if (proc.detectarRecursividadIzquierda()) {
-            throw new Error("Conflicto detectado: La gramática tiene recursividad izquierda.");
+        // --- VALIDACIÓN: CONFLICTOS EN TABLA (Ambigüedad) ---
+        const conflictos = builder.obtenerConflictos(); 
+        if (conflictos.length > 0) {
+            const c = conflictos[0]; // Tomamos el primero para explicarlo
+            throw new Error(`Conflicto LL(1) en [${c.nt}, ${c.t}]: El analizador tiene dos caminos posibles:
+            1. ${c.p1.join(' ')}
+            2. ${c.p2.join(' ')}
+            Debes factorizar la gramática.`);
         }
 
         // Retornar el Evaluador con la configuración léxica expandida

@@ -1,121 +1,203 @@
 export class Escaner {
     static obtenerTokens(input, terminalesConfig) {
-        if (!terminalesConfig || !Array.isArray(terminalesConfig)) {
-            throw new Error("terminalesConfig no es un arreglo válido en el Escaner.");
-        }
-
-        let lexemas = input.trim().split(/\s+/).filter(l => l.length > 0);
         let tokensMapeados = [];
+        let i = 0;
 
-        console.log("--- INICIO DE ESCANEO ---");
+        while (i < input.length) {
+            let char = input[i];
 
-        lexemas.forEach(lexema => {
-            let encontrado = null;
+            // 1. Ignorar espacios
+            if (/\s/.test(char)) { i++; continue; }
 
-            for (let t of terminalesConfig) {
-                let pattern = this.aplanarRegex(t.expresion);
+            let mejorLexema = "";
+            let mejorTokenId = null;
 
-                try {
-                    const regex = new RegExp("^" + pattern + "$");
+            // 2. BUSCAR COINCIDENCIA
+            for (let j = i + 1; j <= input.length && j <= i + 100; j++) {
+                let candidato = input.substring(i, j);
+                let halladoEnEstaLongitud = null;
 
-                    // Log de depuración para ver la regex final construida
-                    console.log(` Probando "${lexema}" con ${t.id}: /${pattern}/`);
-
-                    if (regex.test(lexema)) {
-                        console.log(`  ✅ MATCH con ${t.id}`);
-                        encontrado = t;
-                        break;
+                for (let t of terminalesConfig) {
+                    if (this.validarLexema(candidato, t.expresion)) {
+                        // Guardamos el token que coincide con esta longitud
+                        halladoEnEstaLongitud = { id: t.id, lexema: candidato };
                     }
-                } catch (e) {
-                    console.error(`  ❌ Error en regex para ${t.id}: ${e.message}`);
+                }
+
+                // Si hallamos algo, lo registramos como "el mejor hasta ahora" (Maximal Munch)
+                if (halladoEnEstaLongitud) {
+                    mejorLexema = halladoEnEstaLongitud.lexema;
+                    mejorTokenId = halladoEnEstaLongitud.id;
+                } else if (mejorTokenId) {
+                    // SI YA TENÍAMOS UN TOKEN y en esta nueva longitud ya NO coincide nada,
+                    // significa que ya encontramos el punto de corte óptimo.
+                    break;
                 }
             }
 
-            if (!encontrado) {
-                throw new Error(`Error Léxico: '${lexema}' no reconocido.`);
+            // 3. RESULTADO
+            if (mejorTokenId) {
+                tokensMapeados.push(mejorTokenId);
+                i += mejorLexema.length; // Avanza justo el tamaño del token (ej. 1 para '(')
+            } else {
+                // Si después de probar todas las longitudes nada coincidió:
+                console.error(`Error léxico en: ${input[i]}`);
+                tokensMapeados.push("ERROR_LEXICO");
+                i++;
             }
-
-            tokensMapeados.push(encontrado.id);
-        });
-
-        console.log("--- ESCANEO FINALIZADO ---");
+        }
         tokensMapeados.push('$');
         return tokensMapeados;
     }
 
-    static aplanarRegex(item) {
-        if (!item) return "";
-
-        // 1. Manejo de concatenación (Arreglos)
-        if (Array.isArray(item)) {
-            return item.map(i => this.aplanarRegex(i)).join('');
+    /**
+     * Motor de validación recursiva
+     */
+    static validarLexema(cadena, nodo) {
+        if (typeof nodo === 'string') {
+            let literal = nodo.replace(/^'|'$/g, '');
+            return cadena === literal;
         }
 
-        // 2. Manejo de literales
-        if (typeof item === 'string') {
-            let val = item.replace(/^'|'$/g, '');
-            if (['+', '*', '?', '.', '(', ')', '{', '}', '^', '$'].includes(val)) {
-                return "\\" + val;
-            }
-            return val;
+        if (Array.isArray(nodo)) {
+            return this.validarConcatenacion(cadena, nodo);
         }
 
-        // 3. Manejo de Unión (Operador OR | )
-        // Si el objeto tiene izq/der o es de tipo union, insertamos el pipe |
-        if (item.tipo === 'union' || (item.izq && item.der)) {
-            return `(${this.aplanarRegex(item.izq)}|${this.aplanarRegex(item.der)})`;
+        switch (nodo.tipo) {
+            case 'atomo': return this.validarLexema(cadena, nodo.valor);
+            case 'union':
+                return this.validarLexema(cadena, nodo.izq) || this.validarLexema(cadena, nodo.der);
+            case 'positivo': return this.validarRepeticion(cadena, nodo.valor, 1, 50);
+            case 'kleene': return this.validarRepeticion(cadena, nodo.valor, 0, 50);
+            case 'opcional': return this.validarRepeticion(cadena, nodo.valor, 0, 1);
+            case 'agrupacion': return this.validarLexema(cadena, nodo.valor);
         }
-
-        // 4. Manejo de tipos base y cuantificadores
-        let contenido = this.aplanarRegex(item.valor);
-
-        switch (item.tipo) {
-            case 'atomo': return contenido;
-            case 'kleene': return `(${contenido})*`;
-            case 'positivo': return `(${contenido})+`;
-            case 'opcional': return `(${contenido})?`;
-            case 'agrupacion': return `(${contenido})`;
-            default: return contenido;
-        }
+        return false;
     }
+
+    static validarRepeticion(cadena, subNodo, min, max) {
+        if (cadena === "" && min === 0) return true;
+
+        // Manejo de rangos [a-z] rápido
+        if (typeof subNodo === 'string' && subNodo.includes('-')) {
+            return this.validarRango(cadena, subNodo) && (min <= 1);
+        }
+
+        let resto = cadena;
+        let cuenta = 0;
+
+        while (resto.length > 0 && cuenta < max) {
+            let matchLargo = "";
+            for (let i = resto.length; i > 0; i--) {
+                let sub = resto.substring(0, i);
+                if (this.validarLexema(sub, subNodo)) {
+                    matchLargo = sub;
+                    break;
+                }
+            }
+            if (matchLargo === "") break;
+            resto = resto.substring(matchLargo.length);
+            cuenta++;
+        }
+
+        return resto.length === 0 && cuenta >= min;
+    }
+
+    static validarRango(cadena, rangoStr) {
+        let limpio = rangoStr.replace(/[\[\]]/g, '');
+        let partes = limpio.split('-');
+        let inicio = partes[0].charCodeAt(0);
+        let fin = partes[1].charCodeAt(0);
+
+        for (let i = 0; i < cadena.length; i++) {
+            let code = cadena.charCodeAt(i);
+            if (code < inicio || code > fin) return false;
+        }
+        return true;
+    }
+
+    static validarConcatenacion(cadena, nodos) {
+        if (nodos.length === 0) return cadena === "";
+        if (nodos.length === 1) return this.validarLexema(cadena, nodos[0]);
+
+        // Intentamos cortes de manera lineal
+        for (let i = 0; i <= cadena.length; i++) {
+            let prefijo = cadena.substring(0, i);
+            if (this.validarLexema(prefijo, nodos[0])) {
+                let sufijo = cadena.substring(i);
+                if (this.validarConcatenacion(sufijo, nodos.slice(1))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Mantener para la UI
     static generarDataTabla(input, terminalesConfig) {
         let simbolos = [];
-        let lineas = input.split('\n');
+        let i = 0;
+        let lineaActual = 1;
+        let columnaActual = 1;
 
-        // Usamos tu lógica actual de split para mantener la consistencia de detección
-        lineas.forEach((textoLinea, i) => {
-            let nLinea = i + 1;
-            let palabras = textoLinea.split(/\s+/);
-            let columnaAcumulada = 1;
+        while (i < input.length) {
+            let char = input[i];
 
-            palabras.forEach(lexema => {
-                if (lexema.length === 0) return;
+            // Manejo de saltos de línea y espacios
+            if (char === '\n') {
+                lineaActual++;
+                columnaActual = 1;
+                i++;
+                continue;
+            }
+            if (/\s/.test(char)) {
+                columnaActual++;
+                i++;
+                continue;
+            }
 
-                // Buscamos la posición real del lexema en la línea original para la columna
-                let posColumna = textoLinea.indexOf(lexema, columnaAcumulada - 1);
-                let columnaReal = posColumna + 1;
-                columnaAcumulada = columnaReal + lexema.length;
+            let mejorLexema = "";
+            let mejorTokenId = null;
+            let inicioColumna = columnaActual;
 
-                let tokenAsignado = "ERROR_LEXICO";
+            for (let j = i + 1; j <= input.length && j <= i + 100; j++) {
+                let candidato = input.substring(i, j);
+                let halladoLongitud = null;
 
-                // Reutilizamos tu lógica de aplanarRegex para encontrar el ID
                 for (let t of terminalesConfig) {
-                    let pattern = this.aplanarRegex(t.expresion);
-                    const regex = new RegExp("^" + pattern + "$");
-                    if (regex.test(lexema)) {
-                        tokenAsignado = t.id;
-                        break;
+                    if (this.validarLexema(candidato, t.expresion)) {
+                        halladoLongitud = { id: t.id, lexema: candidato };
                     }
                 }
 
+                if (halladoLongitud) {
+                    mejorLexema = halladoLongitud.lexema;
+                    mejorTokenId = halladoLongitud.id;
+                } else if (mejorTokenId) {
+                    break;
+                }
+            }
+
+            if (mejorTokenId) {
                 simbolos.push({
-                    tipo: tokenAsignado,
-                    lexema: lexema,
-                    linea: nLinea,
-                    columna: columnaReal
+                    tipo: mejorTokenId,
+                    lexema: mejorLexema,
+                    linea: lineaActual,
+                    columna: inicioColumna
                 });
-            });
-        });
+                i += mejorLexema.length;
+                columnaActual += mejorLexema.length;
+            } else {
+                simbolos.push({
+                    tipo: "ERROR_LEXICO",
+                    lexema: input[i],
+                    linea: lineaActual,
+                    columna: inicioColumna
+                });
+                i++;
+                columnaActual++;
+            }
+        }
         return simbolos;
     }
 }

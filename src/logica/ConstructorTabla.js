@@ -14,6 +14,7 @@ export class ConstructorTabla {
     }
 
     generar() {
+        this.conflictos = [];
         this.conflictosDetectados = false;
         // 1. Inicializamos la tabla para cada No Terminal
         this.noTerminales.forEach(nt => { this.tabla[nt] = {}; });
@@ -26,8 +27,7 @@ export class ConstructorTabla {
                 for (let a of primerosCuerpo) {
                     if (a !== 'epsilon' && a !== 'EPSILON') {
                         if (this.tabla[nt][a] && JSON.stringify(this.tabla[nt][a]) !== JSON.stringify(cuerpo)) {
-                            console.error(`Conflicto LL(1) en [${nt}, ${a}]:`, this.tabla[nt][a], " vs ", cuerpo);
-                            this.conflictosDetectados = true;
+                            this.registrarConflicto(nt, a, this.tabla[nt][a], cuerpo);
                         }
                         this.tabla[nt][a] = cuerpo;
                     }
@@ -40,22 +40,37 @@ export class ConstructorTabla {
                     let sigs = Array.from(this.siguientes[nt] || []);
 
                     sigs.forEach(b => {
+                        // --- DETECCIÓN DE CONFLICTO (First/Follow) ---
                         if (this.tabla[nt][b] && JSON.stringify(this.tabla[nt][b]) !== JSON.stringify(cuerpo)) {
-                            console.error(`Conflicto LL(1) (vía Epsilon) en [${nt}, ${b}]:`, this.tabla[nt][b], " vs ", cuerpo);
-                            this.conflictosDetectados = true;
+                            this.registrarConflicto(nt, b, this.tabla[nt][b], cuerpo);
                         }
                         // Solo añadimos si la celda está vacía o si es la misma producción
-                        // Esto evita que el epsilon de la lista "borre" reglas de sentencias
                         if (!this.tabla[nt][b]) {
                             this.tabla[nt][b] = cuerpo;
                         }
+                        
                     });
                 }
             }
         }
         return this.tabla;
     }
-    
+
+    registrarConflicto(nt, terminal, existente, nueva) {
+        this.conflictosDetectados = true;
+        this.conflictos.push({
+            nt: nt,
+            t: terminal,
+            p1: existente,
+            p2: nueva
+        });
+        console.error(`Conflicto LL(1) en [${nt}, ${terminal}]:`, existente, " vs ", nueva);
+    }
+
+    obtenerConflictos() {
+        return this.conflictos;
+    }
+
     tieneConflictos() {
         return this.conflictosDetectados;
     }

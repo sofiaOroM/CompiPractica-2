@@ -19,6 +19,19 @@ const UI = {
     tablaContainer: document.getElementById('tabla-prediccion-container')
 };
 
+function setCargando(estaCargando) {
+    if (estaCargando) {
+        UI.btnEvaluar.disabled = true;
+        UI.btnText.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Analizando cadena...
+        `;
+    } else {
+        UI.btnEvaluar.disabled = false;
+        UI.btnText.innerHTML = "EVALUAR CADENA";
+    }
+}
+
 function crearAnalizador() {
     console.log("Iniciando generación del analizador...");
     try {
@@ -34,12 +47,10 @@ function crearAnalizador() {
         analizadorActual = GeneradorAnalizador.preparar(data);
         console.log("TABLA RESULTANTE:", analizadorActual.tabla);
 
-        // --- ESTA ES LA PARTE QUE FALTABA ---
         // 4. Mostrar la tabla visualmente
         const T = data.lex.map(t => t.id);
         const N = data.syntax.no_terminales;
         generarTablaHTML(analizadorActual.tabla, [...T, '$'], N);
-        // -------------------------------------
 
         UI.console.innerHTML = " Analizador y Tabla generados con éxito.";
         UI.console.className = "alert alert-success error-log";
@@ -79,28 +90,25 @@ function evaluarCadena() {
         const texto = UI.inputEditor.value;
         if (!texto.trim()) return;
 
-        // 1. Extraemos la configuración léxica expandida del analizador
-        // Esta es la que contiene las macros ya procesadas.
         const configLexica = analizadorActual.lexConfig;
 
-        // 2. Verificamos que sea un arreglo antes de pasarlo al Escaner
-        if (!Array.isArray(configLexica)) {
-            console.error("Error: lexConfig no es un arreglo", configLexica);
-            throw new Error("La configuración léxica no se procesó correctamente.");
+        // 1. Generamos la data
+        const dataDetallada = Escaner.generarDataTabla(texto, configLexica);
+        const tokensIds = dataDetallada.map(d => d.tipo);
+
+        // 2. Siempre mostrar la tabla de símbolos
+        renderizadorTabla.renderizar(dataDetallada);
+
+        // 3. Si hay un error léxico, nos detenemos antes de ir al Parser
+        if (tokensIds.includes("ERROR_LEXICO")) {
+            throw new Error("Se encontraron caracteres no reconocidos. Revisa la tabla de símbolos.");
         }
 
-        // 3. Obtenemos los tokens y los lexemas
-        const tokens = Escaner.obtenerTokens(texto, configLexica);
-        const lexemasReales = texto.trim().split(/\s+/).filter(l => l.length > 0);
+        // 4. Análisis Sintáctico
+        const arbol = analizadorActual.analizar([...tokensIds, '$'], dataDetallada);
 
-        const dataParaTabla = Escaner.generarDataTabla(texto, configLexica);
-        renderizadorTabla.renderizar(dataParaTabla);        // 4. Ejecutamos el análisis sintáctico
-        const arbol = analizadorActual.analizar(tokens, lexemasReales);
-
-        // 5. Mostramos resultados
-        //UI.tree.innerText = renderizarArbolManual(arbol);
+        // 5. Éxito
         motorGrafico.dibujar(arbol);
-        /*UI.tree.innerText = renderizarArbolManual(arbol);*/
         UI.console.innerHTML = " Cadena aceptada correctamente.";
         UI.console.className = "alert alert-success error-log";
 
